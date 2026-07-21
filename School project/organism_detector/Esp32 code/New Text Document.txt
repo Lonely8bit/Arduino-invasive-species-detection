@@ -1,0 +1,123 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <ESP32Servo.h>
+
+// Initialize LCD at address 0x27 (16 cols, 2 rows)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Pin Mappings
+const int LED_PINS[4]   = {26, 25, 33, 32};
+const int SERVO_PINS[4] = {13, 18, 14, 27}; // Servo 2 safe on GPIO 18
+
+Servo servos[4];
+
+// Index matches Organism ID (1 to 6)
+// Kept <= 8 characters each so "TARGET: [Name]" stays within 16 LCD chars
+const char* ORGANISM_NAMES[] = {
+  "None",
+  "Beetle",       // ID 1
+  "Rat",          // ID 2
+  "Frog",         // ID 3
+  "Lantana",      // ID 4
+  "Snail",        // ID 5
+  "P. Morn"       // ID 6 (Pink Morning Glory)
+};
+
+void setup() {
+  Serial.begin(115200);
+  Serial.setTimeout(50); // Prevents serial read blocking delay
+
+  // Explicitly set I2C pins for ESP32 (SDA = 21, SCL = 22)
+  Wire.begin(21, 22);
+
+  // Setup LEDs and Servos
+  for (int i = 0; i < 4; i++) {
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW);
+
+    servos[i].attach(SERVO_PINS[i]);
+    servos[i].write(0); // Start at rest position
+  }
+
+  // Setup LCD Screen
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("SYSTEM READY    ");
+  lcd.setCursor(0, 1);
+  lcd.print("Scanning...     ");
+}
+
+void triggerServo(int section) {
+  int idx = section - 1;
+  if (idx >= 0 && idx < 4) {
+    lcd.setCursor(0, 1);
+    lcd.print("ACTUATING...    ");
+    
+    servos[idx].write(90); // Turn pole 90 degrees
+    delay(600);            // Hold position briefly
+    servos[idx].write(0);  // Return home
+
+    lcd.setCursor(0, 1);
+    lcd.print("Section: ");
+    lcd.print(section);
+    lcd.print("      ");
+  }
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+
+    if (command.length() == 2) {
+      int firstDigit  = command.charAt(0) - '0';
+      int secondDigit = command.charAt(1) - '0';
+
+      // --- ACTION COMMAND (91, 92, 93, 94) ---
+      if (firstDigit == 9) {
+        if (secondDigit >= 1 && secondDigit <= 4) {
+          triggerServo(secondDigit);
+        }
+      }
+      // --- NO INVASIVE SPECIES DETECTED (00) ---
+      else if (firstDigit == 0 && secondDigit == 0) {
+        for (int i = 0; i < 4; i++) {
+          digitalWrite(LED_PINS[i], LOW);
+        }
+
+        lcd.setCursor(0, 0);
+        lcd.print("NO INVASIVE SP. ");
+        lcd.setCursor(0, 1);
+        lcd.print("Scanning...     ");
+      }
+      // --- SPECIES DETECTED (IDs 1-6, Sections 1-4) ---
+      else {
+        int orgID   = firstDigit;
+        int section = secondDigit;
+
+        if (section >= 1 && section <= 4) {
+          // Illuminate ONLY the LED for the active section
+          for (int i = 0; i < 4; i++) {
+            digitalWrite(LED_PINS[i], (i == section - 1) ? HIGH : LOW);
+          }
+
+          // Update LCD Display
+          lcd.setCursor(0, 0);
+          lcd.print("TARGET: ");
+          if (orgID >= 1 && orgID <= 6) {
+            lcd.print(ORGANISM_NAMES[orgID]);
+          } else {
+            lcd.print("Unknown ");
+          }
+          lcd.print("        "); // Clear leftover characters
+
+          lcd.setCursor(0, 1);
+          lcd.print("Section: ");
+          lcd.print(section);
+          lcd.print("      ");
+        }
+      }
+    }
+  }
+}
