@@ -1,0 +1,14 @@
+#include <Servo.h>
+
+Servo testServo;
+
+void setup() {
+  testServo.attach(5); // Testing Pin 5 (Section 1)
+}
+
+void loop() {
+  testServo.write(90); // Move to 90
+  delay(600);          // Wait 0.6 seconds
+  testServo.write(0);  // Move back to 0
+  delay(1000);         // Wait 1 second
+}
