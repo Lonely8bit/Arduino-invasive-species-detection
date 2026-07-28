@@ -43,12 +43,24 @@ class ObjectDetectionApp:
         self.is_loading_sliders = False
         self.last_send_time = time.time()
 
-        # Editable Closed Curves (4 Section Polygons: [x, y] vertex coordinates)
+        # Editable Closed Curves (4 Section Polygons with 8 Vertices Each)
         self.sections = {
-            1: [[10, 10], [150, 10], [150, 470], [10, 470]],
-            2: [[170, 10], [310, 10], [310, 470], [170, 470]],
-            3: [[330, 10], [470, 10], [470, 470], [330, 470]],
-            4: [[490, 10], [630, 10], [630, 470], [490, 470]],
+            1: [
+                [10, 10], [80, 10], [150, 10], [150, 240],
+                [150, 470], [80, 470], [10, 470], [10, 240]
+            ],
+            2: [
+                [170, 10], [240, 10], [310, 10], [310, 240],
+                [310, 470], [240, 470], [170, 470], [170, 240]
+            ],
+            3: [
+                [330, 10], [400, 10], [470, 10], [470, 240],
+                [470, 470], [400, 470], [330, 470], [330, 240]
+            ],
+            4: [
+                [490, 10], [560, 10], [630, 10], [630, 240],
+                [630, 470], [560, 470], [490, 470], [490, 240]
+            ],
         }
 
         # HSV Color Ranges (Lower, Upper) + Active Toggle State
@@ -268,12 +280,12 @@ class ObjectDetectionApp:
     def on_canvas_press(self, event):
         x, y = event.x, event.y
 
-        # If Zone Editing mode is active, check if user clicked on a vertex node
+        # If Zone Editing mode is active, check if user clicked on any of the 8 vertex nodes
         if self.edit_sections_mode:
             for sec_id, pts in self.sections.items():
                 for idx, pt in enumerate(pts):
                     dist = np.hypot(x - pt[0], y - pt[1])
-                    if dist < 15:  # Handle grab radius
+                    if dist < 15:  # Node selection radius
                         self.selected_node = (sec_id, idx)
                         return
             self.selected_node = None
@@ -305,7 +317,7 @@ class ObjectDetectionApp:
     def on_canvas_drag(self, event):
         if self.edit_sections_mode and self.selected_node is not None:
             sec_id, pt_idx = self.selected_node
-            # Clamp coordinates to camera frame boundary
+            # Clamp point coordinates to camera frame boundary
             clamped_x = max(0, min(640, event.x))
             clamped_y = max(0, min(480, event.y))
             self.sections[sec_id][pt_idx] = [clamped_x, clamped_y]
@@ -413,7 +425,7 @@ class ObjectDetectionApp:
         blurred = cv2.medianBlur(frame, 7)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-        # 1. DRAW EDITABLE CLOSED CURVES (SECTION POLYGONS)
+        # 1. DRAW EDITABLE 8-POINT CLOSED CURVES
         for sec_id, pts in self.sections.items():
             pts_np = np.array(pts, dtype=np.int32)
             cv2.polylines(frame, [pts_np], isClosed=True, color=(0, 255, 255), thickness=2)
@@ -424,10 +436,10 @@ class ObjectDetectionApp:
             cv2.putText(frame, f"Sec {sec_id}", (center_x - 20, center_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-            # If editing zones, draw draggable corner handle points
+            # If editing zones, draw all 8 draggable handle circles
             if self.edit_sections_mode:
                 for pt in pts:
-                    cv2.circle(frame, (pt[0], pt[1]), 6, (0, 255, 255), -1)
+                    cv2.circle(frame, (pt[0], pt[1]), 5, (0, 255, 255), -1)
 
         detected_organism_id = 0
         detected_section_id = 0
@@ -456,7 +468,7 @@ class ObjectDetectionApp:
                     cx = float(x + bw // 2)
                     cy = float(y + bh // 2)
                     
-                    # Test if object center is inside any custom closed curve
+                    # Test if object center is inside any 8-point closed curve
                     section = 0
                     for sec_id, pts in self.sections.items():
                         pts_np = np.array(pts, dtype=np.int32)
